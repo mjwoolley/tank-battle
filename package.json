@@ -1,0 +1,15 @@
+{
+  "name": "tank-battle-3d",
+  "version": "1.0.0",
+  "description": "3D tank battle game using Three.js",
+  "main": "index.js",
+  "scripts": {
+    "start": "http-server -c-1"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
