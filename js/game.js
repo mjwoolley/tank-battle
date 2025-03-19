@@ -192,6 +192,7 @@ class Game {
             if (e.key === 'v') {
                 this.firstPersonMode = !this.firstPersonMode;
                 this.scopeOverlay.classList.toggle('active');
+                this.player.setFirstPersonMode(this.firstPersonMode);
                 
                 if (this.firstPersonMode) {
                     this.camera.fov = 45;
@@ -281,6 +282,15 @@ class Game {
         if (this.keys.left) this.player.rotateLeft();
         if (this.keys.right) this.player.rotateRight();
 
+        // Update turret rotation in first person mode
+        if (this.firstPersonMode) {
+            // Reset turret rotation to match tank body
+            this.player.turret.rotation.y = 0;
+        }
+
+        // Update projectiles
+        this.player.update();
+
         // Check for collisions after movement
         const tankBox = new THREE.Box3().setFromObject(this.player.mesh);
         let collision = false;
@@ -367,21 +377,14 @@ class Game {
         if (this.firstPersonMode) {
             // First person turret view
             const scopePos = this.player.getTurretPosition();
-            
             this.camera.position.copy(scopePos);
             this.camera.quaternion.copy(this.player.mesh.quaternion);
-            
-            // Hide the turret in first person view
             this.player.turret.visible = false;
         } else {
             // Third person view
             const targetPosition = this.player.mesh.position.clone().add(this.thirdPersonOffset);
-            const targetLookAt = this.player.mesh.position.clone();
-            
             this.camera.position.lerp(targetPosition, this.cameraLerpFactor);
-            this.camera.lookAt(targetLookAt);
-            
-            // Show the turret in third person view
+            this.camera.lookAt(this.player.mesh.position);
             this.player.turret.visible = true;
         }
 

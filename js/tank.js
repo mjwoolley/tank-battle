@@ -57,25 +57,37 @@ export class Tank {
     }
 
     moveForward() {
-        const forward = new THREE.Vector3(0, 0, -1);
-        forward.applyQuaternion(this.mesh.quaternion);
-        forward.multiplyScalar(this.speed);
-        this.mesh.position.add(forward);
+        const velocity = new THREE.Vector3(0, 0, -this.speed);
+        velocity.applyQuaternion(this.mesh.quaternion);
+        this.mesh.position.add(velocity);
     }
 
     moveBackward() {
-        const backward = new THREE.Vector3(0, 0, 1);
-        backward.applyQuaternion(this.mesh.quaternion);
-        backward.multiplyScalar(this.speed);
-        this.mesh.position.add(backward);
+        const velocity = new THREE.Vector3(0, 0, this.speed);
+        velocity.applyQuaternion(this.mesh.quaternion);
+        this.mesh.position.add(velocity);
     }
 
     rotateLeft() {
         this.mesh.rotation.y += this.rotationSpeed;
+        // Sync turret rotation with tank body when not in first person
+        if (!this.isPlayer || !this.firstPersonMode) {
+            this.turret.rotation.y = 0;
+        }
     }
 
     rotateRight() {
         this.mesh.rotation.y -= this.rotationSpeed;
+        // Sync turret rotation with tank body when not in first person
+        if (!this.isPlayer || !this.firstPersonMode) {
+            this.turret.rotation.y = 0;
+        }
+    }
+
+    getTurretPosition() {
+        const pos = new THREE.Vector3();
+        this.turret.getWorldPosition(pos);
+        return pos;
     }
 
     fire() {
@@ -126,19 +138,28 @@ export class Tank {
 export class HumanTank extends Tank {
     constructor(scene, color) {
         super(scene, color);
+        this.isPlayer = true;
+        this.firstPersonMode = true;
         this.camera = null;
         this.setupCamera();
     }
 
     setupCamera() {
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.camera.position.set(0, 2, 0);
-        this.camera.rotation.y = Math.PI;
+        this.camera.position.set(0, 0.5, 0);
         this.turret.add(this.camera);
     }
 
     getCamera() {
         return this.camera;
+    }
+
+    setFirstPersonMode(enabled) {
+        this.firstPersonMode = enabled;
+        if (enabled) {
+            // Reset turret rotation in first person mode
+            this.turret.rotation.y = 0;
+        }
     }
 }
 
