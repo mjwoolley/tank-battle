@@ -26,10 +26,17 @@ class Game {
                 gridSize/2,
                 'red',
                 false
+            ),
+            new Tank(
+                gridSize/2 + (Math.floor(Math.random() * (this.canvas.width/gridSize - 1)) * gridSize),
+                gridSize/2 + gridSize,
+                'red',
+                false
             )
         ];
         this.projectiles = [];
         this.explosions = [];
+        this.destroyedTanks = []; // Initialize destroyedTanks array
         this.gameOver = false;
         
         this.setupControls();
@@ -146,8 +153,12 @@ class Game {
 
         // Check game over conditions
         if (this.player.destroyed) {
+            this.destroyedTanks.push(this.player); // Add player to destroyedTanks array
             this.endGame('Game Over - You Lost!');
         } else if (this.enemies.every(enemy => enemy.destroyed)) {
+            this.enemies.forEach(enemy => {
+                this.destroyedTanks.push(enemy); // Add enemies to destroyedTanks array
+            });
             this.endGame('Congratulations - You Won!');
         }
     }
@@ -159,6 +170,8 @@ class Game {
             console.log("Hit player!");
             this.player.destroyed = true;
             this.createExplosion(this.player.x, this.player.y);
+            // Add player to destroyedTanks array immediately when hit
+            this.destroyedTanks.push({...this.player, isPlayer: true});
             return true;
         }
 
@@ -169,6 +182,8 @@ class Game {
                 console.log("Hit enemy!");
                 enemy.destroyed = true;
                 this.createExplosion(enemy.x, enemy.y);
+                // Add enemy to destroyedTanks array immediately when hit
+                this.destroyedTanks.push({...enemy, isPlayer: false});
                 return true;
             }
         }
@@ -321,6 +336,13 @@ class Game {
             this.ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
         }
 
+        // Draw destroyed tank wrecks first (so they appear under everything else)
+        if (this.destroyedTanks && this.destroyedTanks.length > 0) {
+            this.destroyedTanks.forEach(wreck => {
+                this.drawTankWreck(wreck);
+            });
+        }
+
         // Draw game objects
         if (!this.player.destroyed) {
             this.player.draw(this.ctx);
@@ -344,9 +366,9 @@ class Game {
                 if (explosion.active) {
                     console.log(`Drawing explosion ID: ${explosion.id}, frame: ${explosion.frame}/${explosion.totalFrames}, radius: ${explosion.maxRadius}`);
                     
-                    // Always draw explosions at triple size for better visibility
+                    // Make explosions 50% smaller than before
                     const originalMaxRadius = explosion.maxRadius;
-                    explosion.maxRadius *= 3;
+                    explosion.maxRadius *= 1.5; // Was 3, now 1.5 (50% of original)
                     
                     this.drawExplosion(explosion);
                     
@@ -386,6 +408,66 @@ class Game {
         }
     }
 
+    drawTankWreck(tank) {
+        const ctx = this.ctx;
+        
+        // Draw a damaged tank wreck
+        ctx.save();
+        ctx.translate(tank.x, tank.y);
+        
+        // Draw tank body (darker and damaged)
+        ctx.fillStyle = tank.isPlayer ? '#444444' : '#553333';
+        ctx.strokeStyle = '#222222';
+        ctx.lineWidth = 2;
+        
+        // Draw damaged tank body
+        ctx.beginPath();
+        ctx.rect(-tank.width/2, -tank.height/2, tank.width, tank.height);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Draw damage details
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 1;
+        
+        // Draw cracks and damage
+        ctx.beginPath();
+        ctx.moveTo(-tank.width/2, -tank.height/4);
+        ctx.lineTo(tank.width/3, tank.height/3);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(tank.width/3, -tank.height/3);
+        ctx.lineTo(-tank.width/4, tank.height/4);
+        ctx.stroke();
+        
+        // Draw broken turret
+        ctx.fillStyle = '#333333';
+        ctx.beginPath();
+        ctx.arc(0, 0, tank.width/3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        
+        // Draw broken gun barrel (shorter and bent)
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(tank.width/2, tank.height/6);
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        // Draw smoke effect
+        if (Math.random() < 0.05) { // Occasionally add smoke puffs
+            ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+            ctx.beginPath();
+            ctx.arc(Math.random() * tank.width/2 - tank.width/4, 
+                   -tank.height/2 - Math.random() * 10, 
+                   5 + Math.random() * 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    }
+
     endGame(message) {
         this.gameOver = true;
         const gameStatus = document.getElementById('gameStatus');
@@ -417,11 +499,18 @@ class Game {
                 100,
                 'red',
                 false
+            ),
+            new Tank(
+                100 + Math.random() * (this.canvas.width - 200),
+                100 + 100,
+                'red',
+                false
             )
         ];
         
         this.projectiles = [];
         this.explosions = [];
+        this.destroyedTanks = []; // Clear destroyedTanks array
         this.gameOver = false;
         document.getElementById('gameStatus').style.display = 'none';
         this.lastTime = performance.now();
