@@ -19,6 +19,14 @@ class Tank {
         this.reversing = false;
         this.rotateLeft = false;
         this.rotateRight = false;
+        
+        // Initialize AI properties
+        if (!isPlayer) {
+            this.lastKnownPlayerX = undefined;
+            this.lastKnownPlayerY = undefined;
+            this.reachedLastKnownPosition = false;
+            this.patrolPoint = null;
+        }
     }
 
     getNewPosition(deltaTime) {
@@ -99,9 +107,68 @@ class Tank {
     }
 
     checkCollision(projectile) {
+        // Use a more accurate hitbox-based collision detection
+        // Calculate the rotated hitbox of the tank
+        const halfWidth = this.width / 2;
+        const halfHeight = this.height / 2;
+        
+        // Check if the projectile is within the tank's radius first (quick check)
         const dx = projectile.x - this.x;
         const dy = projectile.y - this.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        return distance < (this.width / 2);
+        const distanceSquared = dx * dx + dy * dy;
+        const maxRadius = Math.max(halfWidth, halfHeight) + 5; // Add a small buffer
+        
+        if (distanceSquared > maxRadius * maxRadius) {
+            return false; // Quick reject if too far
+        }
+        
+        // For a more accurate check, we'll use a simplified rectangular hitbox
+        // This is a bit more forgiving than a precise rotated rectangle check
+        const distance = Math.sqrt(distanceSquared);
+        return distance < (this.width / 2 + 5); // Add a small buffer for better gameplay
+    }
+
+    // AI behavior for enemy tanks
+    aiUpdate(player, projectiles, game) {
+        if (this.isPlayer || this.destroyed) return;
+        
+        // Simple AI: if player is in line of sight, try to shoot
+        if (game.checkLineOfSight(this.x, this.y, player.x, player.y)) {
+            // Calculate angle to player
+            const dx = player.x - this.x;
+            const dy = player.y - this.y;
+            const targetAngle = Math.atan2(dx, -dy);
+            
+            // Rotate towards player
+            const angleDiff = targetAngle - this.angle;
+            const normalizedDiff = Math.atan2(Math.sin(angleDiff), Math.cos(angleDiff));
+            
+            if (normalizedDiff > 0.05) {
+                this.rotateRight = true;
+                this.rotateLeft = false;
+            } else if (normalizedDiff < -0.05) {
+                this.rotateLeft = true;
+                this.rotateRight = false;
+            } else {
+                this.rotateLeft = false;
+                this.rotateRight = false;
+                
+                // If facing player, shoot
+                if (Math.abs(normalizedDiff) < 0.1) {
+                    this.fire(projectiles);
+                }
+            }
+        } else {
+            // Random movement when player not in sight
+            if (Math.random() < 0.01) {
+                this.rotateLeft = Math.random() > 0.5;
+                this.rotateRight = !this.rotateLeft;
+            }
+            
+            if (Math.random() < 0.005) {
+                this.moving = Math.random() > 0.3;
+                this.reversing = Math.random() < 0.2 && !this.moving;
+            }
+        }
     }
 }

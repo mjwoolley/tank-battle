@@ -1,138 +1,80 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>3D Tank Battle</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tank Battle - Game Selection</title>
     <style>
-        body { 
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: white;
             margin: 0;
-            background: #000;
-            overflow: hidden;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
         }
-        canvas { 
-            display: block;
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 2rem;
+            text-shadow: 0 0 10px rgba(0, 255, 0, 0.7);
         }
-        #info {
-            position: absolute;
-            top: 10px;
-            width: 100%;
+        .container {
+            display: flex;
+            gap: 2rem;
+        }
+        .game-option {
+            background-color: #333;
+            border: 2px solid #4CAF50;
+            border-radius: 10px;
+            padding: 2rem;
+            width: 300px;
             text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .game-option:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+        h2 {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+        }
+        p {
+            margin-bottom: 1.5rem;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #4CAF50;
             color: white;
-            font-family: Arial;
-            font-size: 18px;
-            pointer-events: none;
-            text-shadow: 2px 2px 2px rgba(0,0,0,0.5);
+            padding: 0.8rem 1.5rem;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
         }
-        #scope-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            display: none;
-        }
-        #scope-overlay.active {
-            display: block;
-        }
-        #scope-ring {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 100vh;
-            height: 100vh;
-            border-radius: 50%;
-            box-shadow: 0 0 0 100vw rgba(0, 0, 0, 0.8);
-            border: 2px solid rgba(0, 255, 0, 0.5);
-        }
-        #crosshair {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 100vh;
-            height: 100vh;
-        }
-        #crosshair::before,
-        #crosshair::after {
-            content: '';
-            position: absolute;
-            background: rgba(0, 255, 0, 0.3);
-        }
-        #crosshair::before {
-            top: 50%;
-            left: 0;
-            width: 100%;
-            height: 1px;
-        }
-        #crosshair::after {
-            top: 0;
-            left: 50%;
-            width: 1px;
-            height: 100%;
-        }
-        .reticle-circle {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 8px;
-            height: 8px;
-            border: 1px solid rgba(0, 255, 0, 0.8);
-            border-radius: 50%;
-            background: transparent;
-        }
-        #range-marks {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 100vh;
-            height: 100vh;
-        }
-        .range-mark {
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            color: rgba(0, 255, 0, 0.5);
-            font-family: monospace;
-            font-size: 14px;
-            text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
-        }
-        #view-mode {
-            position: absolute;
-            bottom: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: white;
-            font-family: Arial;
-            font-size: 14px;
-            text-shadow: 2px 2px 2px rgba(0,0,0,0.5);
+        .btn:hover {
+            background-color: #45a049;
         }
     </style>
 </head>
 <body>
-    <div id="info">WASD/Arrows to move, Mouse to aim, Click to shoot, V to toggle view</div>
-    <div id="scope-overlay">
-        <div id="scope-ring"></div>
-        <div id="crosshair"></div>
-        <div class="reticle-circle"></div>
-        <div id="range-marks">
-            <div class="range-mark" style="top: 40%">200m</div>
-            <div class="range-mark" style="top: 45%">150m</div>
-            <div class="range-mark" style="top: 48%">100m</div>
-            <div class="range-mark" style="top: 49%">50m</div>
+    <h1>Tank Battle</h1>
+    <div class="container">
+        <div class="game-option">
+            <h2>2D Version</h2>
+            <p>Classic top-down tank battle with 2D graphics. Use arrow keys to move and space to shoot.</p>
+            <a href="2D/index.html" class="btn">Play 2D</a>
+        </div>
+        <div class="game-option">
+            <h2>3D Version</h2>
+            <p>Immersive 3D tank battle experience with modern graphics. Use WASD/arrows to move, mouse to aim, and click to shoot.</p>
+            <a href="3D/index.html" class="btn">Play 3D</a>
         </div>
     </div>
-    <div id="view-mode">Press V to toggle view</div>
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "/node_modules/three/build/three.module.js",
-                "three/addons/": "/node_modules/three/examples/jsm/"
-            }
-        }
-    </script>
-    <script type="module" src="js/game.js"></script>
 </body>
 </html>

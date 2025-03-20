@@ -29,6 +29,7 @@ class Game {
             )
         ];
         this.projectiles = [];
+        this.explosions = [];
         this.gameOver = false;
         
         this.setupControls();
@@ -94,12 +95,13 @@ class Game {
         const deltaTime = (currentTime - this.lastTime) / 1000;
         this.lastTime = currentTime;
 
-        this.update(deltaTime);
+        if (!this.gameOver) {
+            this.update(deltaTime);
+        }
         this.draw();
 
-        if (!this.gameOver) {
-            requestAnimationFrame((timestamp) => this.gameLoop(timestamp));
-        }
+        // Continue the game loop even if game is over, to allow explosions to animate
+        requestAnimationFrame((timestamp) => this.gameLoop(timestamp));
     }
 
     update(deltaTime) {
@@ -115,6 +117,13 @@ class Game {
             const projectile = this.projectiles[i];
             const newX = projectile.x + Math.sin(projectile.angle) * projectile.speed * deltaTime;
             const newY = projectile.y - Math.cos(projectile.angle) * projectile.speed * deltaTime;
+            
+            // Check tank collisions first (prioritize hits on tanks)
+            if (this.checkProjectileCollision(projectile)) {
+                projectile.tank.activeProjectile = null;
+                this.projectiles.splice(i, 1);
+                continue;
+            }
             
             // Check wall collision
             if (this.checkWallCollision(projectile, newX, newY)) {
@@ -133,13 +142,6 @@ class Game {
 
             projectile.x = newX;
             projectile.y = newY;
-
-            // Check collisions with tanks
-            if (this.checkProjectileCollision(projectile)) {
-                projectile.tank.activeProjectile = null;
-                this.projectiles.splice(i, 1);
-                continue;
-            }
         }
 
         // Check game over conditions
@@ -151,16 +153,22 @@ class Game {
     }
 
     checkProjectileCollision(projectile) {
+        
         // Check collision with player
-        if (!projectile.fromPlayer && this.player.checkCollision(projectile)) {
+        if (!projectile.fromPlayer && !this.player.destroyed && this.player.checkCollision(projectile)) {
+            console.log("Hit player!");
             this.player.destroyed = true;
+            this.createExplosion(this.player.x, this.player.y);
             return true;
         }
 
         // Check collision with enemies
-        for (let enemy of this.enemies) {
+        for (let i = 0; i < this.enemies.length; i++) {
+            const enemy = this.enemies[i];
             if (!enemy.destroyed && projectile.fromPlayer && enemy.checkCollision(projectile)) {
+                console.log("Hit enemy!");
                 enemy.destroyed = true;
+                this.createExplosion(enemy.x, enemy.y);
                 return true;
             }
         }
@@ -327,14 +335,67 @@ class Game {
         this.projectiles.forEach(projectile => {
             projectile.draw(this.ctx);
         });
+
+        // Draw explosions LAST (so they appear on top of everything)
+        if (this.explosions && this.explosions.length > 0) {
+            console.log(`Drawing ${this.explosions.length} explosions`);
+            
+            this.explosions.forEach((explosion, index) => {
+                if (explosion.active) {
+                    console.log(`Drawing explosion ID: ${explosion.id}, frame: ${explosion.frame}/${explosion.totalFrames}, radius: ${explosion.maxRadius}`);
+                    
+                    // Always draw explosions at triple size for better visibility
+                    const originalMaxRadius = explosion.maxRadius;
+                    explosion.maxRadius *= 3;
+                    
+                    this.drawExplosion(explosion);
+                    
+                    // Restore original radius
+                    explosion.maxRadius = originalMaxRadius;
+                    
+                    // Advance the frame
+                    explosion.frame++;
+                    if (explosion.frame >= explosion.totalFrames) {
+                        console.log(`Explosion ID: ${explosion.id} completed animation`);
+                        explosion.active = false;
+                    }
+                }
+            });
+            
+            // Only remove inactive explosions AFTER drawing all explosions for this frame
+            const beforeCount = this.explosions.length;
+            this.explosions = this.explosions.filter(explosion => explosion.active);
+            const afterCount = this.explosions.length;
+            
+            if (beforeCount !== afterCount) {
+                console.log(`Removed ${beforeCount - afterCount} inactive explosions, ${afterCount} remaining`);
+            }
+        }
+        
+        // Draw "BOOM!" text during explosions
+        if (this.explosions && this.explosions.length > 0) {
+            this.explosions.forEach(explosion => {
+                // Only show BOOM text for the first part of the explosion
+                if (explosion.frame < explosion.totalFrames * 0.3) {
+                    this.ctx.font = 'bold 48px Arial';
+                    this.ctx.fillStyle = 'white';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.fillText('BOOM!', explosion.x, explosion.y - 50);
+                }
+            });
+        }
     }
 
     endGame(message) {
         this.gameOver = true;
-        const gameOverElement = document.getElementById('game-over');
-        const gameOverText = document.getElementById('game-over-text');
-        gameOverText.textContent = message;
-        gameOverElement.classList.remove('hidden');
+        const gameStatus = document.getElementById('gameStatus');
+        gameStatus.textContent = message;
+        gameStatus.style.display = 'block';
+        
+        // Add restart instructions
+        gameStatus.innerHTML += '<br><span style="font-size: 18px">Press R to restart, Q to quit</span>';
+        
+        console.log("Game over, but animation loop will continue for explosions");
     }
 
     restart() {
@@ -360,14 +421,95 @@ class Game {
         ];
         
         this.projectiles = [];
+        this.explosions = [];
         this.gameOver = false;
-        document.getElementById('game-over').classList.add('hidden');
+        document.getElementById('gameStatus').style.display = 'none';
         this.lastTime = performance.now();
         this.start();
+    }
+    
+    // Create explosion at the given coordinates
+    createExplosion(x, y) {
+        // Make sure explosions array is initialized
+        if (!this.explosions) {
+            this.explosions = [];
+        }
+        
+        const explosion = {
+            x: x,
+            y: y,
+            frame: 0,
+            totalFrames: 60,  // Reduced for testing
+            maxRadius: 150,
+            active: true,
+            id: Date.now() // Add a unique ID for tracking
+        };
+        
+        this.explosions.push(explosion);
+        console.log(`Created explosion at (${x}, ${y}), total explosions: ${this.explosions.length}, ID: ${explosion.id}`);
+        
+        // Play explosion sound (if available)
+        const explosionSound = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU9vT18A');
+        explosionSound.volume = 0.3;
+        try {
+            explosionSound.play().catch(e => console.log('Audio play failed:', e));
+        } catch (e) {
+            console.log('Audio play error:', e);
+        }
+    }
+    
+    // Draw explosion animation - simplified for reliability
+    drawExplosion(explosion) {
+        const ctx = this.ctx;
+        const progress = explosion.frame / explosion.totalFrames;
+        const radius = explosion.maxRadius * Math.sin(progress * Math.PI);
+        
+        // Simple, reliable explosion drawing
+        ctx.save();
+        
+        // Draw outer explosion circle
+        ctx.beginPath();
+        ctx.arc(explosion.x, explosion.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 165, 0, 0.7)';  // Orange with transparency
+        ctx.fill();
+        
+        // Draw inner explosion circle
+        ctx.beginPath();
+        ctx.arc(explosion.x, explosion.y, radius * 0.7, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';  // Yellow with transparency
+        ctx.fill();
+        
+        // Draw core
+        ctx.beginPath();
+        ctx.arc(explosion.x, explosion.y, radius * 0.4, 0, Math.PI * 2);
+        ctx.fillStyle = 'white';
+        ctx.fill();
+        
+        // Draw additional visual effects based on the explosion frame
+        if (explosion.frame < explosion.totalFrames * 0.3) {
+            // Draw radiating lines in the early part of the explosion
+            const lineCount = 12;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 3;
+            
+            for (let i = 0; i < lineCount; i++) {
+                const angle = (i / lineCount) * Math.PI * 2;
+                ctx.beginPath();
+                ctx.moveTo(explosion.x, explosion.y);
+                ctx.lineTo(
+                    explosion.x + Math.cos(angle) * radius * 1.2,
+                    explosion.y + Math.sin(angle) * radius * 1.2
+                );
+                ctx.stroke();
+            }
+        }
+        
+        ctx.restore();
     }
 }
 
 // Start the game when the page loads
-window.addEventListener('load', () => {
-    new Game();
-});
+window.onload = function() {
+    const canvas = document.getElementById('gameCanvas');
+    new Game(canvas);
+};
