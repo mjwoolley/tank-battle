@@ -41,6 +41,10 @@ function init() {
             document.body.removeChild(gameOverText);
             gameOverText = null;
         }
+        
+        // Reset any other state that might be causing issues
+        tank = null;
+        turret = null;
     } else {
         // Create scene for first initialization
         scene = new THREE.Scene();
@@ -117,31 +121,197 @@ function createTerrain() {
     // Clear obstacles array
     obstacles = [];
     
-    // Add some random obstacles
-    for (let i = 0; i < 20; i++) {
-        const size = Math.random() * 3 + 1;
-        const obstacleGeometry = new THREE.BoxGeometry(size, size, size);
-        const obstacleMaterial = new THREE.MeshStandardMaterial({ 
-            color: 0x8B4513,
-            roughness: 0.7 
-        });
-        const obstacle = new THREE.Mesh(obstacleGeometry, obstacleMaterial);
+    // Create border walls
+    const wallHeight = 3;
+    const wallThickness = 2;
+    const wallMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x8B4513, 
+        roughness: 0.7 
+    });
+    
+    // Border walls (top, bottom, left, right)
+    const borders = [
+        // Top wall
+        { width: 100, depth: wallThickness, x: 0, z: -50 + wallThickness/2 },
+        // Bottom wall
+        { width: 100, depth: wallThickness, x: 0, z: 50 - wallThickness/2 },
+        // Left wall
+        { width: wallThickness, depth: 100, x: -50 + wallThickness/2, z: 0 },
+        // Right wall
+        { width: wallThickness, depth: 100, x: 50 - wallThickness/2, z: 0 }
+    ];
+    
+    // Add border walls
+    borders.forEach(border => {
+        const wallGeometry = new THREE.BoxGeometry(border.width, wallHeight, border.depth);
+        const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+        wall.position.set(border.x, wallHeight/2, border.z);
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+        scene.add(wall);
         
-        // Position randomly on the terrain
-        obstacle.position.x = Math.random() * 80 - 40;
-        obstacle.position.z = Math.random() * 80 - 40;
-        obstacle.position.y = size / 2;
-        
-        obstacle.castShadow = true;
-        obstacle.receiveShadow = true;
-        scene.add(obstacle);
-        
-        // Store obstacle for collision detection
         obstacles.push({
-            mesh: obstacle,
-            size: size
+            mesh: wall,
+            width: border.width,
+            depth: border.depth,
+            x: border.x,
+            z: border.z,
+            size: Math.max(border.width, border.depth) // Keep for backward compatibility
         });
+    });
+    
+    // Create three L-shaped cover points similar to the 2D game
+    const coverPoints = [
+        // Left side cover
+        {
+            vertical: { width: wallThickness, depth: 30, x: -30, z: -10 },
+            horizontal: { width: 20, depth: wallThickness, x: -20, z: 5 }
+        },
+        // Middle cover
+        {
+            vertical: { width: wallThickness, depth: 30, x: 0, z: 0 },
+            horizontal: { width: 20, depth: wallThickness, x: -10, z: -15 }
+        },
+        // Right side cover
+        {
+            vertical: { width: wallThickness, depth: 30, x: 30, z: 10 },
+            horizontal: { width: 20, depth: wallThickness, x: 20, z: -5 }
+        }
+    ];
+    
+    // Add all cover points
+    coverPoints.forEach(cover => {
+        // Vertical part of L
+        const verticalGeometry = new THREE.BoxGeometry(
+            cover.vertical.width, 
+            wallHeight, 
+            cover.vertical.depth
+        );
+        const verticalWall = new THREE.Mesh(verticalGeometry, wallMaterial);
+        verticalWall.position.set(
+            cover.vertical.x, 
+            wallHeight/2, 
+            cover.vertical.z
+        );
+        verticalWall.castShadow = true;
+        verticalWall.receiveShadow = true;
+        scene.add(verticalWall);
+        
+        obstacles.push({
+            mesh: verticalWall,
+            width: cover.vertical.width,
+            depth: cover.vertical.depth,
+            x: cover.vertical.x,
+            z: cover.vertical.z,
+            size: Math.max(cover.vertical.width, cover.vertical.depth) // Keep for backward compatibility
+        });
+        
+        // Horizontal part of L
+        const horizontalGeometry = new THREE.BoxGeometry(
+            cover.horizontal.width, 
+            wallHeight, 
+            cover.horizontal.depth
+        );
+        const horizontalWall = new THREE.Mesh(horizontalGeometry, wallMaterial);
+        horizontalWall.position.set(
+            cover.horizontal.x, 
+            wallHeight/2, 
+            cover.horizontal.z
+        );
+        horizontalWall.castShadow = true;
+        horizontalWall.receiveShadow = true;
+        scene.add(horizontalWall);
+        
+        obstacles.push({
+            mesh: horizontalWall,
+            width: cover.horizontal.width,
+            depth: cover.horizontal.depth,
+            x: cover.horizontal.x,
+            z: cover.horizontal.z,
+            size: Math.max(cover.horizontal.width, cover.horizontal.depth) // Keep for backward compatibility
+        });
+    });
+}
+
+// Helper function to check if a position is a valid spawn point (not touching any obstacles)
+function isValidSpawnPoint(x, z) {
+    // Create a temporary position vector to check with our collision system
+    const tempPosition = new THREE.Vector3(x, 0, z);
+    
+    // Use the same collision detection as for movement, but add extra margin
+    // If checkCollision returns true, the position is not valid
+    if (checkCollision(tempPosition)) {
+        return false;
     }
+    
+    // Add extra safety margin check for spawning
+    const spawnMargin = 2; // Extra margin for spawning
+    const tankRadius = 2.5; // Same as in checkCollision
+    
+    // Check with extra margin against obstacles
+    for (let i = 0; i < obstacles.length; i++) {
+        const obstacle = obstacles[i];
+        
+        // Rectangular collision detection with margin
+        const halfWidth = obstacle.width / 2 + spawnMargin;
+        const halfDepth = obstacle.depth / 2 + spawnMargin;
+        
+        // Check if the tank's circle intersects with the expanded obstacle rectangle
+        const circleDistanceX = Math.abs(x - obstacle.x);
+        const circleDistanceZ = Math.abs(z - obstacle.z);
+        
+        // Too far away to collide
+        if (circleDistanceX > (halfWidth + tankRadius)) continue;
+        if (circleDistanceZ > (halfDepth + tankRadius)) continue;
+        
+        // Definitely colliding if within rectangle bounds
+        if (circleDistanceX <= halfWidth) return false;
+        if (circleDistanceZ <= halfDepth) return false;
+        
+        // Check corner collision
+        const cornerDistanceSq = Math.pow(circleDistanceX - halfWidth, 2) +
+                               Math.pow(circleDistanceZ - halfDepth, 2);
+        
+        if (cornerDistanceSq <= Math.pow(tankRadius, 2)) {
+            return false; // Too close to obstacle
+        }
+    }
+    
+    return true;
+}
+
+// Helper function to find a valid spawn point
+function findValidSpawnPoint(isPlayerSpawn) {
+    let x, z;
+    let attempts = 0;
+    const maxAttempts = 100; // Prevent infinite loops
+    
+    do {
+        if (isPlayerSpawn) {
+            // Player spawns in bottom half of the map
+            x = Math.random() * 80 - 40;
+            z = Math.random() * 30 + 10; // Bottom half, away from the edge
+        } else {
+            // Enemies spawn in top half of the map
+            x = Math.random() * 80 - 40;
+            z = Math.random() * 30 - 40; // Top half, away from the edge
+        }
+        attempts++;
+    } while (!isValidSpawnPoint(x, z) && attempts < maxAttempts);
+    
+    // If we couldn't find a valid point after max attempts, use a fallback position
+    if (attempts >= maxAttempts) {
+        console.warn("Could not find valid spawn point after", maxAttempts, "attempts");
+        if (isPlayerSpawn) {
+            x = 0;
+            z = 40; // Safe player position
+        } else {
+            x = 0;
+            z = -40; // Safe enemy position
+        }
+    }
+    
+    return { x, z };
 }
 
 function createPlayerTank() {
@@ -153,7 +323,11 @@ function createPlayerTank() {
         metalness: 0.3
     });
     tank = new THREE.Mesh(bodyGeometry, bodyMaterial);
-    tank.position.y = 1.5;
+    
+    // Find a valid spawn point for the player
+    const spawnPoint = findValidSpawnPoint(true);
+    tank.position.set(spawnPoint.x, 1.5, spawnPoint.z);
+    
     tank.castShadow = true;
     tank.receiveShadow = true;
     scene.add(tank);
@@ -208,7 +382,8 @@ function createPlayerTank() {
 }
 
 function createEnemyTanks() {
-    for (let i = 0; i < 5; i++) {
+    // Create exactly 3 enemy tanks
+    for (let i = 0; i < 3; i++) {
         // Enemy tank body
         const bodyGeometry = new THREE.BoxGeometry(4, 1.5, 6);
         const bodyMaterial = new THREE.MeshStandardMaterial({ 
@@ -218,10 +393,9 @@ function createEnemyTanks() {
         });
         const enemyTank = new THREE.Mesh(bodyGeometry, bodyMaterial);
         
-        // Position randomly on the terrain
-        enemyTank.position.x = Math.random() * 80 - 40;
-        enemyTank.position.z = Math.random() * 80 - 40;
-        enemyTank.position.y = 1.5;
+        // Find a valid spawn point for this enemy tank
+        const spawnPoint = findValidSpawnPoint(false);
+        enemyTank.position.set(spawnPoint.x, 1.5, spawnPoint.z);
         
         // Random rotation
         enemyTank.rotation.y = Math.random() * Math.PI * 2;
@@ -274,23 +448,22 @@ function createEnemyTanks() {
         rightTread.receiveShadow = true;
         enemyTank.add(rightTread);
         
-        // Create a more consistent initial direction - point away from center
-        const directionFromCenter = new THREE.Vector3(enemyTank.position.x, 0, enemyTank.position.z).normalize();
-        // Add some randomness but keep general direction away from center
+        // Create a more consistent initial direction - point toward player's side of map
+        const directionTowardPlayer = new THREE.Vector3(0, 0, 1).normalize(); // Point south
+        // Add some randomness but keep general direction toward player
         const randomFactor = 0.3; // Lower value = more consistent direction
-        directionFromCenter.x += (Math.random() - 0.5) * randomFactor;
-        directionFromCenter.z += (Math.random() - 0.5) * randomFactor;
-        directionFromCenter.normalize();
+        directionTowardPlayer.x += (Math.random() - 0.5) * randomFactor;
+        directionTowardPlayer.normalize();
         
         // Set initial rotation to match direction
-        enemyTank.rotation.y = Math.atan2(-directionFromCenter.x, -directionFromCenter.z);
+        enemyTank.rotation.y = Math.atan2(-directionTowardPlayer.x, -directionTowardPlayer.z);
         
         enemyTanks.push({
             tank: enemyTank,
             turret: enemyTurret,
             speed: Math.random() * 0.05 + 0.02,
             rotationSpeed: Math.random() * 0.01 + 0.005,
-            direction: directionFromCenter,
+            direction: directionTowardPlayer,
             lastDirectionChange: Date.now(), // Initialize timing properties
             lastMoveTime: Date.now()
         });
@@ -410,13 +583,33 @@ function onKeyDown(event) {
 
 // Check for collisions with obstacles, enemy tanks, and wrecks
 function checkCollision(position) {
-    const tankRadius = 3; // Approximate radius of the tank
+    const tankRadius = 2.5; // Reduced radius of the tank for better movement
     
-    // Check collision with obstacles
+    // Check collision with obstacles using rectangular collision detection
     for (let i = 0; i < obstacles.length; i++) {
         const obstacle = obstacles[i];
-        const distance = position.distanceTo(obstacle.mesh.position);
-        if (distance < tankRadius + obstacle.size / 2) {
+        
+        // Rectangular collision detection with the obstacle
+        const halfWidth = obstacle.width / 2;
+        const halfDepth = obstacle.depth / 2;
+        
+        // Check if the tank's circle intersects with the obstacle's rectangle
+        const circleDistanceX = Math.abs(position.x - obstacle.x);
+        const circleDistanceZ = Math.abs(position.z - obstacle.z);
+        
+        // Too far away to collide
+        if (circleDistanceX > (halfWidth + tankRadius)) continue;
+        if (circleDistanceZ > (halfDepth + tankRadius)) continue;
+        
+        // Definitely colliding if within rectangle bounds
+        if (circleDistanceX <= halfWidth) return true;
+        if (circleDistanceZ <= halfDepth) return true;
+        
+        // Check corner collision
+        const cornerDistanceSq = Math.pow(circleDistanceX - halfWidth, 2) +
+                               Math.pow(circleDistanceZ - halfDepth, 2);
+        
+        if (cornerDistanceSq <= Math.pow(tankRadius, 2)) {
             return true; // Collision detected
         }
     }
@@ -424,7 +617,12 @@ function checkCollision(position) {
     // Check collision with enemy tanks
     for (let i = 0; i < enemyTanks.length; i++) {
         const enemyTank = enemyTanks[i].tank;
-        const distance = position.distanceTo(enemyTank.position);
+        // Calculate horizontal distance only
+        const distance = Math.sqrt(
+            Math.pow(position.x - enemyTank.position.x, 2) + 
+            Math.pow(position.z - enemyTank.position.z, 2)
+        );
+        
         if (distance < tankRadius * 2) { // Two tank radii
             return true; // Collision detected
         }
@@ -433,7 +631,12 @@ function checkCollision(position) {
     // Check collision with wrecks
     for (let i = 0; i < wrecks.length; i++) {
         const wreck = wrecks[i];
-        const distance = position.distanceTo(wreck.position);
+        // Calculate horizontal distance only
+        const distance = Math.sqrt(
+            Math.pow(position.x - wreck.position.x, 2) + 
+            Math.pow(position.z - wreck.position.z, 2)
+        );
+        
         if (distance < tankRadius + 2) { // Tank radius + wreck radius
             return true; // Collision detected
         }
@@ -522,8 +725,37 @@ function fireProjectile() {
         // Check for collision with obstacles
         for (let i = 0; i < obstacles.length; i++) {
             const obstacle = obstacles[i];
-            const distance = projectile.position.distanceTo(obstacle.mesh.position);
-            if (distance < obstacle.size / 2 + 0.8) { // obstacle size/2 + projectile radius
+            const projectileRadius = 0.8;
+            
+            // Rectangular collision detection for projectile
+            const halfWidth = obstacle.width / 2;
+            const halfDepth = obstacle.depth / 2;
+            
+            // Check if the projectile intersects with the obstacle's rectangle
+            const circleDistanceX = Math.abs(projectile.position.x - obstacle.x);
+            const circleDistanceZ = Math.abs(projectile.position.z - obstacle.z);
+            
+            // Too far away to collide
+            if (circleDistanceX > (halfWidth + projectileRadius)) continue;
+            if (circleDistanceZ > (halfDepth + projectileRadius)) continue;
+            
+            // Definitely colliding if within rectangle bounds
+            if (circleDistanceX <= halfWidth || circleDistanceZ <= halfDepth) {
+                // Create explosion at impact point
+                createExplosion(projectile.position.clone(), 1.5);
+                
+                // Remove projectile
+                scene.remove(projectile);
+                cancelAnimationFrame(animationId);
+                console.log('Projectile hit obstacle');
+                return;
+            }
+            
+            // Check corner collision
+            const cornerDistanceSq = Math.pow(circleDistanceX - halfWidth, 2) +
+                                   Math.pow(circleDistanceZ - halfDepth, 2);
+            
+            if (cornerDistanceSq <= Math.pow(projectileRadius, 2)) {
                 // Create explosion at impact point
                 createExplosion(projectile.position.clone(), 1.5);
                 
@@ -538,7 +770,12 @@ function fireProjectile() {
         // Check for collision with enemy tanks
         for (let i = enemyTanks.length - 1; i >= 0; i--) {
             const enemyData = enemyTanks[i];
-            const distance = projectile.position.distanceTo(enemyData.tank.position);
+            // Calculate horizontal distance only (ignore y-axis differences)
+            const distance = Math.sqrt(
+                Math.pow(projectile.position.x - enemyData.tank.position.x, 2) + 
+                Math.pow(projectile.position.z - enemyData.tank.position.z, 2)
+            );
+            
             if (distance < 4) {
                 // Create explosion at impact point
                 createExplosion(projectile.position.clone(), 3);
@@ -583,9 +820,6 @@ function toggleView() {
         camera.position.set(0, 10, 20);
         controls.target.copy(tank.position);
     }
-    
-    document.getElementById('view-mode').textContent = 
-        isFirstPerson ? "First Person View (Press V to toggle)" : "Third Person View (Press V to toggle)";
     
     // Force a render to update the view immediately
     renderer.render(scene, camera);

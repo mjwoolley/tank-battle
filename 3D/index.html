@@ -14,13 +14,17 @@
         #info {
             position: absolute;
             top: 10px;
-            width: 100%;
-            text-align: center;
+            left: 10px;
+            width: auto;
+            text-align: left;
             color: white;
             font-family: Arial;
-            font-size: 18px;
+            font-size: 16px;
             pointer-events: none;
             text-shadow: 2px 2px 2px rgba(0,0,0,0.5);
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
         }
         #scope-overlay {
             position: fixed;
@@ -42,12 +46,12 @@
             width: 100vh;
             height: 100vh;
             border-radius: 50%;
-            box-shadow: 0 0 0 100vw rgba(0, 0, 0, 0.8);
+            /* Remove dark shadow outside the scope ring */
             border: 2px solid rgba(0, 255, 0, 0.5);
         }
         #crosshair {
             position: absolute;
-            top: 50%;
+            top: 45%; /* Adjusted significantly up to match projectile trajectory */
             left: 50%;
             transform: translate(-50%, -50%);
             width: 100vh;
@@ -73,7 +77,7 @@
         }
         .reticle-circle {
             position: absolute;
-            top: 50%;
+            top: 45%; /* Adjusted further up to match projectile trajectory */
             left: 50%;
             transform: translate(-50%, -50%);
             width: 8px;
@@ -99,16 +103,7 @@
             font-size: 14px;
             text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
         }
-        #view-mode {
-            position: absolute;
-            bottom: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: white;
-            font-family: Arial;
-            font-size: 14px;
-            text-shadow: 2px 2px 2px rgba(0,0,0,0.5);
-        }
+        /* View mode indicator removed */
     </style>
 </head>
 <body>
@@ -124,7 +119,7 @@
             <div class="range-mark" style="top: 49%">50m</div>
         </div>
     </div>
-    <div id="view-mode">Press V to toggle view</div>
+    <!-- View mode indicator removed -->
     <script type="importmap">
         {
             "imports": {
