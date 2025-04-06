@@ -386,32 +386,7 @@ function onKeyDown(event) {
             // Rotate the turret right
             turret.rotation.y -= turretRotationSpeed;
             break;
-        case 'q':
-            // Strafe left in first person mode
-            if (isFirstPerson) {
-                newPosition.copy(tank.position);
-                newPosition.x += Math.sin(tank.rotation.y + Math.PI/2) * speed;
-                newPosition.z += Math.cos(tank.rotation.y + Math.PI/2) * speed;
-                
-                // Only move if no collision
-                if (!checkCollision(newPosition)) {
-                    tank.position.copy(newPosition);
-                }
-            }
-            break;
-        case 'e':
-            // Strafe right in first person mode
-            if (isFirstPerson) {
-                newPosition.copy(tank.position);
-                newPosition.x += Math.sin(tank.rotation.y - Math.PI/2) * speed;
-                newPosition.z += Math.cos(tank.rotation.y - Math.PI/2) * speed;
-                
-                // Only move if no collision
-                if (!checkCollision(newPosition)) {
-                    tank.position.copy(newPosition);
-                }
-            }
-            break;
+        // Q key removed - does nothing now
         case 'v':
             toggleView();
             break;
