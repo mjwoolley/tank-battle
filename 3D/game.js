@@ -14,21 +14,54 @@ let isPointerLocked = false;
 let explosions = [];
 let wrecks = [];
 
-// Initialize the game
+// Game state
+let isGameOver = false;
+let gameOverText;
+
+// Initialize or restart the game
 function init() {
-    // Create scene
-    scene = new THREE.Scene();
+    // Reset game state
+    isGameOver = false;
+    
+    // Clear existing scene if restarting
+    if (scene) {
+        // Remove all objects from the scene
+        while(scene.children.length > 0) { 
+            scene.remove(scene.children[0]); 
+        }
+        
+        // Clear arrays
+        enemyTanks = [];
+        obstacles = [];
+        explosions = [];
+        wrecks = [];
+        
+        // Remove game over text if it exists
+        if (gameOverText) {
+            document.body.removeChild(gameOverText);
+            gameOverText = null;
+        }
+    } else {
+        // Create scene for first initialization
+        scene = new THREE.Scene();
+        
+        // Create renderer
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+        
+        // Add event listeners
+        window.addEventListener('resize', onWindowResize);
+        window.addEventListener('keydown', onKeyDown);
+    }
+    
+    // Set scene background
     scene.background = new THREE.Color(0x87CEEB); // Sky blue background
     
     // Create camera
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(0, 10, 20);
-    
-    // Create renderer
-    renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    document.body.appendChild(renderer.domElement);
     
     // Add controls
     controls = new OrbitControls(camera, renderer.domElement);
@@ -62,12 +95,10 @@ function init() {
     // Get scope overlay
     scopeOverlay = document.getElementById('scope-overlay');
     
-    // Add event listeners
-    window.addEventListener('resize', onWindowResize);
-    window.addEventListener('keydown', onKeyDown);
-    
-    // Start animation loop
-    animate();
+    // Start animation loop if not already running
+    if (!renderer.info.render.frame) {
+        animate();
+    }
 }
 
 function createTerrain() {
@@ -243,12 +274,25 @@ function createEnemyTanks() {
         rightTread.receiveShadow = true;
         enemyTank.add(rightTread);
         
+        // Create a more consistent initial direction - point away from center
+        const directionFromCenter = new THREE.Vector3(enemyTank.position.x, 0, enemyTank.position.z).normalize();
+        // Add some randomness but keep general direction away from center
+        const randomFactor = 0.3; // Lower value = more consistent direction
+        directionFromCenter.x += (Math.random() - 0.5) * randomFactor;
+        directionFromCenter.z += (Math.random() - 0.5) * randomFactor;
+        directionFromCenter.normalize();
+        
+        // Set initial rotation to match direction
+        enemyTank.rotation.y = Math.atan2(-directionFromCenter.x, -directionFromCenter.z);
+        
         enemyTanks.push({
             tank: enemyTank,
             turret: enemyTurret,
             speed: Math.random() * 0.05 + 0.02,
             rotationSpeed: Math.random() * 0.01 + 0.005,
-            direction: new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize()
+            direction: directionFromCenter,
+            lastDirectionChange: Date.now(), // Initialize timing properties
+            lastMoveTime: Date.now()
         });
     }
 }
@@ -259,21 +303,72 @@ function onWindowResize() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
+// Create game over screen
+function showGameOver() {
+    // Create game over text overlay
+    gameOverText = document.createElement('div');
+    gameOverText.style.position = 'absolute';
+    gameOverText.style.width = '100%';
+    gameOverText.style.height = '100%';
+    gameOverText.style.backgroundColor = 'rgba(0,0,0,0.7)';
+    gameOverText.style.color = 'white';
+    gameOverText.style.display = 'flex';
+    gameOverText.style.flexDirection = 'column';
+    gameOverText.style.justifyContent = 'center';
+    gameOverText.style.alignItems = 'center';
+    gameOverText.style.zIndex = '1000';
+    gameOverText.style.fontFamily = 'Arial, sans-serif';
+    
+    const title = document.createElement('h1');
+    title.textContent = 'GAME OVER';
+    title.style.fontSize = '5em';
+    title.style.margin = '0 0 20px 0';
+    
+    const instruction = document.createElement('p');
+    instruction.textContent = 'Press R to restart';
+    instruction.style.fontSize = '2em';
+    
+    gameOverText.appendChild(title);
+    gameOverText.appendChild(instruction);
+    document.body.appendChild(gameOverText);
+}
+
 function onKeyDown(event) {
+    // If game is over, only respond to R key for restart
+    if (isGameOver) {
+        if (event.key.toLowerCase() === 'r') {
+            init(); // Restart the game
+        }
+        return;
+    }
+    
     const speed = 0.5;
     const tankRotationSpeed = 0.05;
     const turretRotationSpeed = 0.05;
+    let newPosition = new THREE.Vector3();
     
     switch(event.key) {
         case 'w':
-            // Move forward in the direction the tank is facing
-            tank.position.x += Math.sin(tank.rotation.y) * speed;
-            tank.position.z += Math.cos(tank.rotation.y) * speed;
+            // Calculate new position before moving
+            newPosition.copy(tank.position);
+            newPosition.x += Math.sin(tank.rotation.y) * speed;
+            newPosition.z += Math.cos(tank.rotation.y) * speed;
+            
+            // Only move if no collision
+            if (!checkCollision(newPosition)) {
+                tank.position.copy(newPosition);
+            }
             break;
         case 's':
-            // Move backward in the direction the tank is facing
-            tank.position.x -= Math.sin(tank.rotation.y) * speed;
-            tank.position.z -= Math.cos(tank.rotation.y) * speed;
+            // Calculate new position before moving
+            newPosition.copy(tank.position);
+            newPosition.x -= Math.sin(tank.rotation.y) * speed;
+            newPosition.z -= Math.cos(tank.rotation.y) * speed;
+            
+            // Only move if no collision
+            if (!checkCollision(newPosition)) {
+                tank.position.copy(newPosition);
+            }
             break;
         case 'a':
             // Rotate the tank left
@@ -294,15 +389,27 @@ function onKeyDown(event) {
         case 'q':
             // Strafe left in first person mode
             if (isFirstPerson) {
-                tank.position.x += Math.sin(tank.rotation.y + Math.PI/2) * speed;
-                tank.position.z += Math.cos(tank.rotation.y + Math.PI/2) * speed;
+                newPosition.copy(tank.position);
+                newPosition.x += Math.sin(tank.rotation.y + Math.PI/2) * speed;
+                newPosition.z += Math.cos(tank.rotation.y + Math.PI/2) * speed;
+                
+                // Only move if no collision
+                if (!checkCollision(newPosition)) {
+                    tank.position.copy(newPosition);
+                }
             }
             break;
         case 'e':
             // Strafe right in first person mode
             if (isFirstPerson) {
-                tank.position.x += Math.sin(tank.rotation.y - Math.PI/2) * speed;
-                tank.position.z += Math.cos(tank.rotation.y - Math.PI/2) * speed;
+                newPosition.copy(tank.position);
+                newPosition.x += Math.sin(tank.rotation.y - Math.PI/2) * speed;
+                newPosition.z += Math.cos(tank.rotation.y - Math.PI/2) * speed;
+                
+                // Only move if no collision
+                if (!checkCollision(newPosition)) {
+                    tank.position.copy(newPosition);
+                }
             }
             break;
         case 'v':
@@ -310,6 +417,9 @@ function onKeyDown(event) {
             break;
         case ' ': // Space bar for firing
             fireProjectile();
+            break;
+        case 'r':
+            init(); // Restart the game
             break;
     }
     
@@ -321,6 +431,40 @@ function onKeyDown(event) {
     if (isFirstPerson) {
         updateFirstPersonCamera();
     }
+}
+
+// Check for collisions with obstacles, enemy tanks, and wrecks
+function checkCollision(position) {
+    const tankRadius = 3; // Approximate radius of the tank
+    
+    // Check collision with obstacles
+    for (let i = 0; i < obstacles.length; i++) {
+        const obstacle = obstacles[i];
+        const distance = position.distanceTo(obstacle.mesh.position);
+        if (distance < tankRadius + obstacle.size / 2) {
+            return true; // Collision detected
+        }
+    }
+    
+    // Check collision with enemy tanks
+    for (let i = 0; i < enemyTanks.length; i++) {
+        const enemyTank = enemyTanks[i].tank;
+        const distance = position.distanceTo(enemyTank.position);
+        if (distance < tankRadius * 2) { // Two tank radii
+            return true; // Collision detected
+        }
+    }
+    
+    // Check collision with wrecks
+    for (let i = 0; i < wrecks.length; i++) {
+        const wreck = wrecks[i];
+        const distance = position.distanceTo(wreck.position);
+        if (distance < tankRadius + 2) { // Tank radius + wreck radius
+            return true; // Collision detected
+        }
+    }
+    
+    return false; // No collision
 }
 
 // Extract the firing functionality into a separate function that can be called from onKeyDown
@@ -518,13 +662,85 @@ function updateFirstPersonCamera() {
 }
 
 function updateEnemyTanks() {
-    enemyTanks.forEach(enemyData => {
-        // Move enemy tank
-        enemyData.tank.position.x += enemyData.direction.x * enemyData.speed;
-        enemyData.tank.position.z += enemyData.direction.z * enemyData.speed;
+    // Don't update if game is over
+    if (isGameOver) return;
+    
+    enemyTanks.forEach((enemyData, index) => {
+        // Calculate new position before moving
+        const newPosition = new THREE.Vector3();
+        newPosition.copy(enemyData.tank.position);
+        newPosition.x += enemyData.direction.x * enemyData.speed;
+        newPosition.z += enemyData.direction.z * enemyData.speed;
         
-        // Rotate enemy tank to face direction of movement
-        enemyData.tank.rotation.y = Math.atan2(-enemyData.direction.x, -enemyData.direction.z);
+        // Check for collisions
+        let hasCollision = false;
+        
+        // Check collision with player tank
+        if (tank.visible) { // Only if player tank is active
+            const distanceToPlayer = newPosition.distanceTo(tank.position);
+            if (distanceToPlayer < 6) { // Two tank radii
+                hasCollision = true;
+            }
+        }
+        
+        // Check collision with other enemy tanks
+        if (!hasCollision) {
+            for (let i = 0; i < enemyTanks.length; i++) {
+                if (i !== index) { // Don't check against self
+                    const otherTank = enemyTanks[i].tank;
+                    const distance = newPosition.distanceTo(otherTank.position);
+                    if (distance < 6) { // Two tank radii
+                        hasCollision = true;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Check collision with obstacles
+        if (!hasCollision) {
+            for (let i = 0; i < obstacles.length; i++) {
+                const obstacle = obstacles[i];
+                const distance = newPosition.distanceTo(obstacle.mesh.position);
+                if (distance < 3 + obstacle.size / 2) { // Tank radius + obstacle radius
+                    hasCollision = true;
+                    break;
+                }
+            }
+        }
+        
+        // Check collision with wrecks
+        if (!hasCollision) {
+            for (let i = 0; i < wrecks.length; i++) {
+                const wreck = wrecks[i];
+                const distance = newPosition.distanceTo(wreck.position);
+                if (distance < 5) { // Tank radius + wreck radius
+                    hasCollision = true;
+                    break;
+                }
+            }
+        }
+        
+        // Move if no collision, otherwise change direction
+        if (!hasCollision) {
+            enemyData.tank.position.copy(newPosition);
+            // Store last successful move time
+            enemyData.lastMoveTime = Date.now();
+        } else {
+            // Only change direction if we haven't changed recently (prevents rapid spinning)
+            const currentTime = Date.now();
+            if (!enemyData.lastDirectionChange || currentTime - enemyData.lastDirectionChange > 1000) {
+                // Change direction when collision detected
+                enemyData.direction.set(Math.random() - 0.5, 0, Math.random() - 0.5).normalize();
+                enemyData.lastDirectionChange = currentTime;
+            }
+        }
+        
+        // Only update rotation if the tank is actually moving (not colliding)
+        if (!hasCollision) {
+            // Rotate enemy tank to face direction of movement
+            enemyData.tank.rotation.y = Math.atan2(-enemyData.direction.x, -enemyData.direction.z);
+        }
         
         // Keep enemy tank within bounds
         if (
@@ -551,8 +767,8 @@ function updateEnemyTanks() {
         const angle = Math.atan2(targetDirection.x, targetDirection.z);
         enemyData.turret.rotation.y = angle - enemyData.tank.rotation.y;
         
-        // Occasionally fire at player
-        if (Math.random() < 0.001) {
+        // Occasionally fire at player if they're visible
+        if (!isGameOver && tank.visible && Math.random() < 0.001) {
             fireEnemyProjectile(enemyData);
         }
     });
@@ -652,25 +868,13 @@ function fireEnemyProjectile(enemyData) {
             
             console.log('Player hit by enemy projectile!');
             
-            // After a delay, respawn the player
+            // Set game over state
+            isGameOver = true;
+            
+            // Show game over screen after a short delay
             setTimeout(() => {
-                // Remove the wreck
-                scene.remove(playerWreck);
-                wrecks.splice(wrecks.indexOf(playerWreck), 1);
-                
-                // Reset player position
-                tank.position.set(0, 1.5, 0);
-                tank.rotation.set(0, 0, 0);
-                
-                // Make tank visible again
-                tank.visible = true;
-                turret.visible = true;
-                
-                // Re-enable controls
-                controls.enabled = true;
-                
-                console.log('Player respawned');
-            }, 3000); // Respawn after 3 seconds
+                showGameOver();
+            }, 1500);
             
             return;
         }
