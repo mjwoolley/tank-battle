@@ -1,0 +1,11 @@
+# Exclude large files and directories
+Cascade Conversations and Video/
+*.mp4
+*.mov
+*.avi
+*.wmv
+
+# Other files not needed for deployment
+.git/
+.vscode/
+node_modules/
