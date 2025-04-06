@@ -576,28 +576,12 @@ function toggleView() {
         
         // Force the camera to update immediately
         updateFirstPersonCamera();
-        
-        // Request pointer lock for first-person view
-        renderer.domElement.requestPointerLock = 
-            renderer.domElement.requestPointerLock ||
-            renderer.domElement.mozRequestPointerLock ||
-            renderer.domElement.webkitRequestPointerLock;
-        
-        renderer.domElement.requestPointerLock();
     } else {
         // Switch to third person view
         controls.enabled = true;
         scopeOverlay.classList.remove('active');
         camera.position.set(0, 10, 20);
         controls.target.copy(tank.position);
-        
-        // Exit pointer lock for third-person view
-        document.exitPointerLock = 
-            document.exitPointerLock ||
-            document.mozExitPointerLock ||
-            document.webkitExitPointerLock;
-        
-        document.exitPointerLock();
     }
     
     document.getElementById('view-mode').textContent = 
