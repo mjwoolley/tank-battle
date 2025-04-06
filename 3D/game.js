@@ -60,7 +60,9 @@ function init() {
     // Add event listeners
     window.addEventListener('resize', onWindowResize);
     window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('mousedown', onMouseDown);
+    
+    // Add click event directly to the renderer's DOM element
+    renderer.domElement.addEventListener('mousedown', onMouseDown);
     
     // Setup pointer lock event listeners
     document.addEventListener('pointerlockchange', onPointerLockChange);
@@ -307,58 +309,109 @@ function onKeyDown(event) {
     }
 }
 
-function onMouseDown() {
-    // Shoot projectile
-    const projectileGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-    const projectileMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xFFD700,
-        emissive: 0xFFD700,
-        emissiveIntensity: 0.5
+function onMouseDown(event) {
+    // Only process left mouse button (button 0)
+    if (event.button !== 0) return;
+    
+    console.log('Firing projectile!');
+    
+    // Create a larger, brighter projectile for better visibility
+    const projectileGeometry = new THREE.SphereGeometry(0.8, 16, 16);
+    const projectileMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xFF0000 // Bright red color
     });
     const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
+    projectile.castShadow = true;
     
-    // Position at the end of the cannon
-    const cannonTip = new THREE.Vector3(0, 0, 2);
-    turret.children[0].localToWorld(cannonTip);
-    projectile.position.copy(cannonTip);
+    // Get the cannon (first child of turret)
+    const cannon = turret.children[0];
     
-    // Direction from turret
-    const direction = new THREE.Vector3(0, 0, 1);
-    turret.children[0].getWorldDirection(direction);
+    // Position projectile at the end of the cannon
+    // Get the cannon's world position and add an offset in its direction
+    const cannonWorldPos = new THREE.Vector3();
+    cannon.getWorldPosition(cannonWorldPos);
+    
+    // Get the turret's forward direction - this is what we're aiming with
+    const direction = new THREE.Vector3();
+    
+    // Use the turret's world matrix to determine the forward direction
+    // Extract the forward vector (negative Z) from the turret's matrix
+    const matrix = new THREE.Matrix4();
+    matrix.extractRotation(turret.matrixWorld);
+    const forward = new THREE.Vector3(0, 0, 1);
+    forward.applyMatrix4(matrix);
+    
+    // Set our direction to this forward vector
+    direction.copy(forward);
+    
+    // Set the projectile position at the end of the cannon
+    projectile.position.copy(cannonWorldPos);
+    // Use a fresh direction vector to avoid modifying the original
+    const offsetDirection = direction.clone();
+    projectile.position.add(offsetDirection.multiplyScalar(3)); // Place it 3 units in front of the cannon
+    
+    // Store the direction for animation
+    const projectileDirection = direction.clone().normalize();
+    // Force the projectile to travel horizontally (optional - remove if you want projectiles to follow exact turret angle)
+    // projectileDirection.y = 0;
+    // projectileDirection.normalize();
+    
+    console.log('Projectile direction:', projectileDirection);
     
     // Add to scene
     scene.add(projectile);
     
-    // Animate projectile
-    const animateProjectile = function() {
-        projectile.position.add(direction.multiplyScalar(1));
+    // Create a fixed speed for the projectile
+    const projectileSpeed = 1.0;
+    
+    // Animate projectile with a separate function
+    let animationId;
+    
+    function animateProjectile() {
+        // Move projectile forward along its direction
+        projectile.position.x += projectileDirection.x * projectileSpeed;
+        projectile.position.y += projectileDirection.y * projectileSpeed;
+        projectile.position.z += projectileDirection.z * projectileSpeed;
         
         // Check if projectile is out of bounds
         if (
             projectile.position.x > 50 || 
             projectile.position.x < -50 || 
             projectile.position.z > 50 || 
-            projectile.position.z < -50
+            projectile.position.z < -50 ||
+            projectile.position.y < 0 || 
+            projectile.position.y > 50
         ) {
             scene.remove(projectile);
+            cancelAnimationFrame(animationId);
+            console.log('Projectile out of bounds');
             return;
         }
         
         // Check for collision with enemy tanks
-        enemyTanks.forEach((enemyData, index) => {
+        for (let i = enemyTanks.length - 1; i >= 0; i--) {
+            const enemyData = enemyTanks[i];
             const distance = projectile.position.distanceTo(enemyData.tank.position);
             if (distance < 4) {
+                // Enemy hit!
                 scene.remove(enemyData.tank);
-                enemyTanks.splice(index, 1);
+                enemyTanks.splice(i, 1);
                 scene.remove(projectile);
+                cancelAnimationFrame(animationId);
+                console.log('Enemy tank hit!');
                 return;
             }
-        });
+        }
         
-        requestAnimationFrame(animateProjectile);
-    };
+        // Continue animation
+        animationId = requestAnimationFrame(animateProjectile);
+    }
     
-    animateProjectile();
+    // Start animation
+    animationId = requestAnimationFrame(animateProjectile);
+    
+    // Prevent default behavior
+    event.preventDefault();
 }
 
 function toggleView() {
@@ -473,39 +526,58 @@ function updateEnemyTanks() {
 }
 
 function fireEnemyProjectile(enemyData) {
-    const projectileGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-    const projectileMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xFF4500,
-        emissive: 0xFF4500,
-        emissiveIntensity: 0.5
+    // Create a visible enemy projectile
+    const projectileGeometry = new THREE.SphereGeometry(0.8, 16, 16);
+    const projectileMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xFF4500 // Orange-red color for enemy projectiles
     });
     const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
+    projectile.castShadow = true;
     
-    // Position at the end of the cannon
-    const cannonTip = new THREE.Vector3(0, 0, 2);
-    enemyData.turret.children[0].localToWorld(cannonTip);
-    projectile.position.copy(cannonTip);
+    // Get the enemy cannon (first child of turret)
+    const cannon = enemyData.turret.children[0];
+    
+    // Position projectile at the end of the cannon
+    const cannonWorldPos = new THREE.Vector3();
+    cannon.getWorldPosition(cannonWorldPos);
     
     // Direction from turret to player
     const direction = new THREE.Vector3()
-        .subVectors(tank.position, projectile.position)
+        .subVectors(tank.position, cannonWorldPos)
         .normalize();
+    
+    // Set the projectile position at the end of the cannon
+    projectile.position.copy(cannonWorldPos);
+    // Use a fresh direction vector to avoid modifying the original
+    const offsetDirection = direction.clone();
+    projectile.position.add(offsetDirection.multiplyScalar(3)); // Place it 3 units in front of the cannon
     
     // Add to scene
     scene.add(projectile);
     
-    // Animate projectile
-    const animateProjectile = function() {
-        projectile.position.add(direction.multiplyScalar(0.8));
+    // Create a fixed speed for the projectile
+    const projectileSpeed = 0.8;
+    
+    // Animate projectile with a separate function
+    let animationId;
+    
+    function animateProjectile() {
+        // Move projectile forward along its direction
+        projectile.position.x += direction.x * projectileSpeed;
+        projectile.position.y += direction.y * projectileSpeed;
+        projectile.position.z += direction.z * projectileSpeed;
         
         // Check if projectile is out of bounds
         if (
             projectile.position.x > 50 || 
             projectile.position.x < -50 || 
             projectile.position.z > 50 || 
-            projectile.position.z < -50
+            projectile.position.z < -50 ||
+            projectile.position.y < 0 || 
+            projectile.position.y > 50
         ) {
             scene.remove(projectile);
+            cancelAnimationFrame(animationId);
             return;
         }
         
@@ -514,19 +586,25 @@ function fireEnemyProjectile(enemyData) {
         if (distance < 4) {
             // Player hit!
             scene.remove(projectile);
+            cancelAnimationFrame(animationId);
+            
             // Flash the tank red to indicate damage
             const originalColor = tank.material.color.clone();
             tank.material.color.set(0xFF0000);
             setTimeout(() => {
                 tank.material.color.copy(originalColor);
             }, 200);
+            
+            console.log('Player hit by enemy projectile!');
             return;
         }
         
-        requestAnimationFrame(animateProjectile);
-    };
+        // Continue animation
+        animationId = requestAnimationFrame(animateProjectile);
+    }
     
-    animateProjectile();
+    // Start animation
+    animationId = requestAnimationFrame(animateProjectile);
 }
 
 function animate() {
