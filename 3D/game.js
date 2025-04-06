@@ -4,10 +4,15 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // Basic 3D Tank Battle game setup
 let scene, camera, renderer, controls;
 let tank, turret, enemyTanks = [];
-let terrain;
+let terrain, obstacles = [];
 let isFirstPerson = false;
 let scopeOverlay;
+// No longer using pointer lock
 let isPointerLocked = false;
+
+// Arrays to track explosions and wrecks
+let explosions = [];
+let wrecks = [];
 
 // Initialize the game
 function init() {
@@ -61,14 +66,6 @@ function init() {
     window.addEventListener('resize', onWindowResize);
     window.addEventListener('keydown', onKeyDown);
     
-    // Add click event directly to the renderer's DOM element
-    renderer.domElement.addEventListener('mousedown', onMouseDown);
-    
-    // Setup pointer lock event listeners
-    document.addEventListener('pointerlockchange', onPointerLockChange);
-    document.addEventListener('mozpointerlockchange', onPointerLockChange);
-    document.addEventListener('webkitpointerlockchange', onPointerLockChange);
-    
     // Start animation loop
     animate();
 }
@@ -85,6 +82,9 @@ function createTerrain() {
     terrain.rotation.x = -Math.PI / 2;
     terrain.receiveShadow = true;
     scene.add(terrain);
+    
+    // Clear obstacles array
+    obstacles = [];
     
     // Add some random obstacles
     for (let i = 0; i < 20; i++) {
@@ -104,6 +104,12 @@ function createTerrain() {
         obstacle.castShadow = true;
         obstacle.receiveShadow = true;
         scene.add(obstacle);
+        
+        // Store obstacle for collision detection
+        obstacles.push({
+            mesh: obstacle,
+            size: size
+        });
     }
 }
 
@@ -255,30 +261,35 @@ function onWindowResize() {
 
 function onKeyDown(event) {
     const speed = 0.5;
-    const rotationSpeed = 0.05;
+    const tankRotationSpeed = 0.05;
+    const turretRotationSpeed = 0.05;
     
     switch(event.key) {
-        case 'ArrowUp':
         case 'w':
             // Move forward in the direction the tank is facing
             tank.position.x += Math.sin(tank.rotation.y) * speed;
             tank.position.z += Math.cos(tank.rotation.y) * speed;
             break;
-        case 'ArrowDown':
         case 's':
             // Move backward in the direction the tank is facing
             tank.position.x -= Math.sin(tank.rotation.y) * speed;
             tank.position.z -= Math.cos(tank.rotation.y) * speed;
             break;
-        case 'ArrowLeft':
         case 'a':
-            // Always rotate the tank left in both modes
-            tank.rotation.y += rotationSpeed;
+            // Rotate the tank left
+            tank.rotation.y += tankRotationSpeed;
+            break;
+        case 'd':
+            // Rotate the tank right
+            tank.rotation.y -= tankRotationSpeed;
+            break;
+        case 'ArrowLeft':
+            // Rotate the turret left
+            turret.rotation.y += turretRotationSpeed;
             break;
         case 'ArrowRight':
-        case 'd':
-            // Always rotate the tank right in both modes
-            tank.rotation.y -= rotationSpeed;
+            // Rotate the turret right
+            turret.rotation.y -= turretRotationSpeed;
             break;
         case 'q':
             // Strafe left in first person mode
@@ -297,6 +308,9 @@ function onKeyDown(event) {
         case 'v':
             toggleView();
             break;
+        case ' ': // Space bar for firing
+            fireProjectile();
+            break;
     }
     
     // Keep tank within bounds
@@ -309,10 +323,8 @@ function onKeyDown(event) {
     }
 }
 
-function onMouseDown(event) {
-    // Only process left mouse button (button 0)
-    if (event.button !== 0) return;
-    
+// Extract the firing functionality into a separate function that can be called from onKeyDown
+function fireProjectile() {
     console.log('Firing projectile!');
     
     // Create a larger, brighter projectile for better visibility
@@ -388,14 +400,38 @@ function onMouseDown(event) {
             return;
         }
         
+        // Check for collision with obstacles
+        for (let i = 0; i < obstacles.length; i++) {
+            const obstacle = obstacles[i];
+            const distance = projectile.position.distanceTo(obstacle.mesh.position);
+            if (distance < obstacle.size / 2 + 0.8) { // obstacle size/2 + projectile radius
+                // Create explosion at impact point
+                createExplosion(projectile.position.clone(), 1.5);
+                
+                // Remove projectile
+                scene.remove(projectile);
+                cancelAnimationFrame(animationId);
+                console.log('Projectile hit obstacle');
+                return;
+            }
+        }
+        
         // Check for collision with enemy tanks
         for (let i = enemyTanks.length - 1; i >= 0; i--) {
             const enemyData = enemyTanks[i];
             const distance = projectile.position.distanceTo(enemyData.tank.position);
             if (distance < 4) {
-                // Enemy hit!
+                // Create explosion at impact point
+                createExplosion(projectile.position.clone(), 3);
+                
+                // Create a tank wreck
+                createTankWreck(enemyData.tank);
+                
+                // Remove the original tank
                 scene.remove(enemyData.tank);
                 enemyTanks.splice(i, 1);
+                
+                // Remove projectile
                 scene.remove(projectile);
                 cancelAnimationFrame(animationId);
                 console.log('Enemy tank hit!');
@@ -409,9 +445,6 @@ function onMouseDown(event) {
     
     // Start animation
     animationId = requestAnimationFrame(animateProjectile);
-    
-    // Prevent default behavior
-    event.preventDefault();
 }
 
 function toggleView() {
@@ -455,10 +488,10 @@ function toggleView() {
     renderer.render(scene, camera);
 }
 
+// No longer using pointer lock functionality
 function onPointerLockChange() {
-    isPointerLocked = document.pointerLockElement === renderer.domElement ||
-                     document.mozPointerLockElement === renderer.domElement ||
-                     document.webkitPointerLockElement === renderer.domElement;
+    // Function kept for compatibility but no longer used
+    isPointerLocked = false;
 }
 
 function updateFirstPersonCamera() {
@@ -581,21 +614,64 @@ function fireEnemyProjectile(enemyData) {
             return;
         }
         
+        // Check for collision with obstacles
+        for (let i = 0; i < obstacles.length; i++) {
+            const obstacle = obstacles[i];
+            const distance = projectile.position.distanceTo(obstacle.mesh.position);
+            if (distance < obstacle.size / 2 + 0.8) { // obstacle size/2 + projectile radius
+                // Create explosion at impact point
+                createExplosion(projectile.position.clone(), 1.5);
+                
+                // Remove projectile
+                scene.remove(projectile);
+                cancelAnimationFrame(animationId);
+                return;
+            }
+        }
+        
         // Check for collision with player tank
         const distance = projectile.position.distanceTo(tank.position);
         if (distance < 4) {
+            // Create explosion at impact point
+            createExplosion(projectile.position.clone(), 3);
+            
             // Player hit!
             scene.remove(projectile);
             cancelAnimationFrame(animationId);
             
-            // Flash the tank red to indicate damage
-            const originalColor = tank.material.color.clone();
-            tank.material.color.set(0xFF0000);
-            setTimeout(() => {
-                tank.material.color.copy(originalColor);
-            }, 200);
+            // Create a tank wreck and hide the player tank
+            // We don't remove the player tank completely since it's needed for game logic
+            const playerWreck = createTankWreck(tank);
+            
+            // Hide the original tank but keep it in the scene for game logic
+            tank.visible = false;
+            turret.visible = false;
+            
+            // Disable controls
+            controls.enabled = false;
             
             console.log('Player hit by enemy projectile!');
+            
+            // After a delay, respawn the player
+            setTimeout(() => {
+                // Remove the wreck
+                scene.remove(playerWreck);
+                wrecks.splice(wrecks.indexOf(playerWreck), 1);
+                
+                // Reset player position
+                tank.position.set(0, 1.5, 0);
+                tank.rotation.set(0, 0, 0);
+                
+                // Make tank visible again
+                tank.visible = true;
+                turret.visible = true;
+                
+                // Re-enable controls
+                controls.enabled = true;
+                
+                console.log('Player respawned');
+            }, 3000); // Respawn after 3 seconds
+            
             return;
         }
         
@@ -607,6 +683,126 @@ function fireEnemyProjectile(enemyData) {
     animationId = requestAnimationFrame(animateProjectile);
 }
 
+// Create an explosion effect at the specified position
+function createExplosion(position, size = 2) {
+    // Create a particle system for the explosion
+    const particleCount = 20;
+    const explosionGeometry = new THREE.BufferGeometry();
+    const explosionMaterial = new THREE.PointsMaterial({
+        color: 0xFF5500,
+        size: 0.5,
+        transparent: true,
+        opacity: 1.0
+    });
+    
+    // Create particles with random positions within a sphere
+    const particles = [];
+    const velocities = [];
+    
+    for (let i = 0; i < particleCount; i++) {
+        // Random position within a sphere
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+        const r = Math.random() * size;
+        
+        const x = r * Math.sin(phi) * Math.cos(theta);
+        const y = r * Math.sin(phi) * Math.sin(theta);
+        const z = r * Math.cos(phi);
+        
+        particles.push(x, y, z);
+        
+        // Random velocity outward from center
+        velocities.push({
+            x: x * 0.1,
+            y: y * 0.1 + 0.05, // Add slight upward bias
+            z: z * 0.1
+        });
+    }
+    
+    explosionGeometry.setAttribute('position', new THREE.Float32BufferAttribute(particles, 3));
+    const explosionParticles = new THREE.Points(explosionGeometry, explosionMaterial);
+    
+    // Set the position of the explosion
+    explosionParticles.position.copy(position);
+    scene.add(explosionParticles);
+    
+    // Add to explosions array with timing information
+    explosions.push({
+        particles: explosionParticles,
+        velocities: velocities,
+        life: 1.0, // Life of the explosion (seconds)
+        created: Date.now()
+    });
+}
+
+// Create a tank wreck at the position of a destroyed tank
+function createTankWreck(tankMesh) {
+    // Create a wreck based on the tank's geometry but with a darker, damaged appearance
+    const wreckGeometry = new THREE.BoxGeometry(4, 1, 6); // Slightly flatter than original tank
+    const wreckMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333, // Dark gray/charred color
+        roughness: 0.9,
+        metalness: 0.2
+    });
+    
+    const wreck = new THREE.Mesh(wreckGeometry, wreckMaterial);
+    
+    // Position the wreck at the tank's position
+    wreck.position.copy(tankMesh.position);
+    wreck.rotation.copy(tankMesh.rotation);
+    
+    // Add some random rotation to make it look damaged
+    wreck.rotation.x = (Math.random() - 0.5) * 0.3;
+    wreck.rotation.z = (Math.random() - 0.5) * 0.3;
+    
+    // Lower it slightly into the ground
+    wreck.position.y = 0.6;
+    
+    wreck.castShadow = true;
+    wreck.receiveShadow = true;
+    
+    // Add to scene and track in wrecks array
+    scene.add(wreck);
+    wrecks.push(wreck);
+    
+    return wreck;
+}
+
+// Update explosions (handle particle movement and fading)
+function updateExplosions() {
+    const currentTime = Date.now();
+    
+    // Update each explosion
+    for (let i = explosions.length - 1; i >= 0; i--) {
+        const explosion = explosions[i];
+        const positions = explosion.particles.geometry.attributes.position.array;
+        
+        // Calculate age of explosion
+        const age = (currentTime - explosion.created) / 1000; // in seconds
+        
+        // Remove if too old
+        if (age > explosion.life) {
+            scene.remove(explosion.particles);
+            explosions.splice(i, 1);
+            continue;
+        }
+        
+        // Update particle positions based on velocities
+        for (let j = 0; j < positions.length / 3; j++) {
+            positions[j * 3] += explosion.velocities[j].x;
+            positions[j * 3 + 1] += explosion.velocities[j].y;
+            positions[j * 3 + 2] += explosion.velocities[j].z;
+        }
+        
+        // Update the position attribute
+        explosion.particles.geometry.attributes.position.needsUpdate = true;
+        
+        // Fade out based on age
+        const normalizedAge = age / explosion.life;
+        explosion.particles.material.opacity = 1 - normalizedAge;
+    }
+}
+
 function animate() {
     requestAnimationFrame(animate);
     
@@ -615,6 +811,9 @@ function animate() {
     
     // Update enemy tanks
     updateEnemyTanks();
+    
+    // Update explosions
+    updateExplosions();
     
     // Update camera based on view mode
     if (isFirstPerson) {
@@ -632,26 +831,4 @@ function animate() {
 // Initialize the game when the page loads
 window.addEventListener('DOMContentLoaded', init);
 
-// Track mouse movement for aiming
-document.addEventListener('mousemove', function(event) {
-    if (isFirstPerson && isPointerLocked) {
-        // In first person with pointer lock, use movement for more precise control
-        const sensitivity = 0.002;
-        
-        // Rotate the turret horizontally based on mouse movement
-        turret.rotation.y -= event.movementX * sensitivity;
-        
-        // We're not adjusting the cannon pitch for now to keep it horizontal
-        // This ensures the view stays level with the horizon
-        
-        // Force immediate camera update
-        updateFirstPersonCamera();
-        
-        // Prevent default behavior
-        event.preventDefault();
-    } else if (!isFirstPerson) {
-        // In third person, rotate turret based on mouse position
-        const mouseX = (event.clientX / window.innerWidth) * 2 - 1;
-        turret.rotation.y = mouseX * 2;
-    }
-});
+// No longer using mouse for aiming
