@@ -181,7 +181,7 @@ class Game {
             this.enemies.forEach(enemy => {
                 this.destroyedTanks.push(enemy); // Add enemies to destroyedTanks array
             });
-            this.endGame('Congratulations - You Won!');
+            this.endGame('You Win!!!'); // Changed win message
         }
     }
 
@@ -493,11 +493,15 @@ class Game {
     endGame(message) {
         this.gameOver = true;
         const gameStatus = document.getElementById('gameStatus');
-        gameStatus.textContent = message;
+        
+        // Reset any inline styles that might have been set elsewhere
+        gameStatus.removeAttribute('style');
+        
+        // Set display to block to make it visible
         gameStatus.style.display = 'block';
-
+        
         // Add restart instructions
-        gameStatus.innerHTML += '<br><span style="font-size: 18px">Press R to restart, Q to quit</span>';
+        gameStatus.innerHTML = message + '<br><span style="font-size: 18px">Press R to restart, Q to quit</span>';
 
         console.log("Game over, but animation loop will continue for explosions");
     }
@@ -533,7 +537,7 @@ class Game {
         console.log(`Created explosion at (${x}, ${y}), total explosions: ${this.explosions.length}, ID: ${explosion.id}`);
 
         // Play explosion sound (if available)
-        const explosionSound = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU9vT18A');
+        const explosionSound = new Audio('../sounds/explosion-42132.mp3'); // Use the actual sound file
         explosionSound.volume = 0.3;
         try {
             explosionSound.play().catch(e => console.log('Audio play failed:', e));
